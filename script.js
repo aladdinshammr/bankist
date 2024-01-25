@@ -7,9 +7,22 @@
 // Data
 const account1 = {
   owner: "Jonas Schmedtmann",
-  movements: [200, 450, -400, 3000, -650, -130, 70, 1300],
+  movements: [200, 455.23, -306.5, 25000, -642.21, -133.9, 79.97, 1300],
   interestRate: 1.2, // %
   pin: 1111,
+
+  movementsDates: [
+    "2019-11-18T21:31:17.178Z",
+    "2019-12-23T07:42:02.383Z",
+    "2020-01-28T09:15:04.904Z",
+    "2020-04-01T10:17:24.185Z",
+    "2020-05-08T14:11:59.604Z",
+    "2024-01-20T17:01:17.194Z",
+    "2024-01-24T23:36:17.929Z",
+    "2024-01-25T10:51:36.790Z",
+  ],
+  currency: "EUR",
+  locale: "pt-PT", // de-DE
 };
 
 const account2 = {
@@ -17,6 +30,19 @@ const account2 = {
   movements: [5000, 3400, -150, -790, -3210, -1000, 8500, -30],
   interestRate: 1.5,
   pin: 2222,
+
+  movementsDates: [
+    "2019-11-01T13:15:33.035Z",
+    "2019-11-30T09:48:16.867Z",
+    "2019-12-25T06:04:23.907Z",
+    "2020-01-25T14:18:46.235Z",
+    "2020-02-05T16:33:06.386Z",
+    "2020-04-10T14:43:26.374Z",
+    "2020-06-25T18:49:59.371Z",
+    "2020-07-26T12:01:20.894Z",
+  ],
+  currency: "USD",
+  locale: "en-US",
 };
 
 const account3 = {
@@ -34,6 +60,9 @@ const account4 = {
 };
 
 const accounts = [account1, account2, account3, account4];
+
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
 
 // Elements
 const labelWelcome = document.querySelector(".welcome");
@@ -63,6 +92,45 @@ const inputClosePin = document.querySelector(".form__input--pin");
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
+let activeAccount, activeTimer;
+
+// predefined functions
+
+const formatNum = function (local, currency, number) {
+  return new Intl.NumberFormat(local, {
+    style: "currency",
+    currency,
+  }).format(number);
+};
+
+const displayFormattedDate = function (date, lang) {
+  const options = {
+    minute: "numeric",
+    hour: "numeric",
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  };
+  const formattedDate = new Intl.DateTimeFormat(lang, options).format(date);
+  return formattedDate;
+};
+
+const formatMoveDate = function (date, local) {
+  const calcDaysPassed = (date1, date2) =>
+    Math.round(Math.abs((date2 - date1) / (1000 * 60 * 60 * 24)));
+
+  const daysPassed = calcDaysPassed(new Date(), date);
+  if (daysPassed < 1) return "Today";
+  if (daysPassed < 2) return "Yesterday";
+  if (daysPassed <= 7) return `${daysPassed} days ago`;
+  return new Intl.DateTimeFormat(local).format(date);
+};
+
+const calcDisplayBalance = function (acc) {
+  acc.balance = acc.movements.reduce((accum, value) => accum + value, 0);
+
+  labelBalance.textContent = formatNum(acc.local, acc.currency, acc.balance);
+};
 
 const createUserName = function (accs) {
   accs.forEach((acc) => {
@@ -74,12 +142,6 @@ const createUserName = function (accs) {
   });
 };
 
-const calcDisplayBalance = function (acc) {
-  acc.balance = acc.movements.reduce((accum, value) => accum + value, 0);
-
-  labelBalance.textContent = acc.balance + " €";
-};
-
 const displayMovements = function (account, sort = false) {
   containerMovements.innerHTML = "";
   const movs = sort
@@ -88,13 +150,21 @@ const displayMovements = function (account, sort = false) {
 
   movs.forEach((move, index) => {
     const movementType = move > 0 ? "deposit" : "withdrawal";
+    const moveDate = account.movementsDates[index];
     const html = `
     <div class="movements__row">
         <div class="movements__type movements__type--${movementType}">${
       index + 1
     } ${movementType}</div>
-        <div class="movements__date">3 days ago</div>
-        <div class="movements__value">${move}€</div>
+        <div class="movements__date">${formatMoveDate(
+          new Date(moveDate),
+          account.local
+        )}</div>
+        <div class="movements__value">${formatNum(
+          account.local,
+          account.currency,
+          move
+        )}</div>
       </div>
     `;
     containerMovements.insertAdjacentHTML("afterbegin", html);
@@ -102,37 +172,70 @@ const displayMovements = function (account, sort = false) {
 };
 
 const calcDisplaySummary = function (account) {
-  labelSumIn.textContent =
-    account.movements
-      .filter((move) => move > 0)
-      .reduce((acc, deposit) => acc + deposit, 0) + " €";
+  const sumIn = account.movements
+    .filter((move) => move > 0)
+    .reduce((acc, deposit) => acc + deposit, 0);
+  labelSumIn.textContent = formatNum(account.local, account.currency, sumIn);
 
-  labelSumOut.textContent =
-    Math.abs(
-      account.movements
-        .filter((value) => value < 0)
-        .reduce((acc, withdraw) => acc + withdraw, 0)
-    ) + " €";
-
-  labelSumInterest.textContent =
+  const sumOut = Math.abs(
     account.movements
-      .filter((value) => value > 0)
-      .map((deposit) => (deposit * account.interestRate) / 100)
-      .filter((value) => value > 1)
-      .reduce((acc, value) => acc + value, 0) + " €";
+      .filter((value) => value < 0)
+      .reduce((acc, withdraw) => acc + withdraw, 0)
+  );
+
+  labelSumOut.textContent = formatNum(account.local, account.currency, sumOut);
+
+  const sumInterset = account.movements
+    .filter((value) => value > 0)
+    .map((deposit) => (deposit * account.interestRate) / 100)
+    .filter((value) => value > 1)
+    .reduce((acc, value) => acc + value, 0);
+
+  labelSumInterest.textContent = formatNum(
+    account.local,
+    account.currency,
+    sumInterset
+  );
+};
+
+const startTimer = function () {
+  // set a time
+  let time = 5 * 60;
+  // update ui every seconds
+
+  function updateTimer() {
+    const minutes = String(Math.trunc(time / 60)).padStart(2, 0);
+    const seconds = String(time % 60).padStart(2, 0);
+    labelTimer.textContent = `${minutes}:${seconds}`;
+
+    if (time <= 0) {
+      clearInterval(timer);
+      containerApp.style.opacity = 0;
+      labelWelcome.textContent = "Log in to get started";
+    } else time--;
+  }
+  updateTimer();
+  const timer = setInterval(updateTimer, 1000);
+  return timer;
 };
 
 const updatUI = function (account) {
   calcDisplayBalance(account);
   displayMovements(account);
   calcDisplaySummary(account);
+
+  if (activeTimer) {
+    clearInterval(activeTimer);
+    activeTimer = startTimer();
+  } else activeTimer = startTimer();
 };
 
 createUserName(accounts);
 
-// Event handlers
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
 
-let activeAccount;
+// Event handlers
 
 btnLogin.addEventListener("click", function (e) {
   e.preventDefault();
@@ -150,6 +253,10 @@ btnLogin.addEventListener("click", function (e) {
     labelWelcome.textContent = `Welcome back, ${
       activeAccount.owner.split(" ")[0]
     }`;
+    labelDate.textContent = displayFormattedDate(
+      new Date(),
+      activeAccount.local
+    );
 
     updatUI(activeAccount);
   }
@@ -168,8 +275,11 @@ btnTransfer.addEventListener("click", function (e) {
     receiver?.username !== activeAccount.username
   ) {
     inputTransferTo.value = inputTransferAmount.value = "";
+    const transferDate = new Date();
     activeAccount.movements.push(-amount);
+    activeAccount.movementsDates.push(transferDate.toISOString());
     receiver.movements.push(amount);
+    receiver.movementsDates.push(transferDate.toISOString());
     updatUI(activeAccount);
   }
 });
@@ -182,9 +292,13 @@ btnLoan.addEventListener("click", function (e) {
     amount > 0 &&
     activeAccount.movements.some((value) => value >= amount * 0.1)
   ) {
-    inputLoanAmount.value = "";
-    activeAccount.movements.push(amount);
-    updatUI(activeAccount);
+    setTimeout(function () {
+      inputLoanAmount.value = "";
+      const loanDate = new Date();
+      activeAccount.movements.push(amount);
+      activeAccount.movementsDates.push(loanDate.toISOString());
+      updatUI(activeAccount);
+    }, 2500);
   }
 });
 
@@ -212,95 +326,3 @@ btnSort.addEventListener("click", function (e) {
 });
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
-// LECTURES
-
-const currencies = new Map([
-  ["USD", "United States dollar"],
-  ["EUR", "Euro"],
-  ["GBP", "Pound sterling"],
-]);
-
-const movements = [200, 450, -400, 3000, -650, -130, 70, 1300];
-
-/////////////////////////////////////////////////
-
-const totalDeposits = accounts
-  .flatMap((acc) => acc.movements)
-  .filter((mov) => mov > 0)
-  .reduce((acc, value) => acc + value, 0);
-
-const depositMoreThan1000 = accounts
-  .flatMap((acc) => acc.movements)
-  .filter((move) => move >= 1000)
-  .reduce((acc, _) => ++acc, 0);
-
-const depositMoreThan10002 = accounts
-  .flatMap((acc) => acc.movements)
-  .reduce((acc, value) => (value >= 1000 ? ++acc : acc), 0);
-
-const totalDepositsAndWithdrawel = accounts
-  .flatMap((acc) => acc.movements)
-  .reduce(
-    (acc, cur) => {
-      // cur > 0 ? (acc.deposit += cur) : (acc.withdrawal += cur);
-      acc[cur > 0 ? "deposit" : "withdrawal"] += cur;
-      return acc;
-    },
-    { deposit: 0, withdrawal: 0 }
-  );
-
-const dogs = [
-  { weight: 22, curFood: 250, owners: ["Alice", "Bob"] },
-  { weight: 8, curFood: 200, owners: ["Matilda"] },
-  { weight: 13, curFood: 275, owners: ["Sarah", "John"] },
-  { weight: 32, curFood: 340, owners: ["Michael"] },
-];
-
-dogs.forEach((value) => {
-  return (value.recommendedFood = value.weight ** 0.75 * 28);
-});
-
-const sarahDog = dogs.find((value) => value.owners.includes("Sarah"));
-console.log(
-  sarahDog.curFood > sarahDog.recommendedFood * 0.9 &&
-    sarahDog.curFood < sarahDog.recommendedFood * 1.1
-);
-
-const ownersEatTooMuch = dogs
-  .filter((dog) => {
-    return (
-      dog.curFood > dog.recommendedFood * 0.9 &&
-      dog.curFood < dog.recommendedFood * 1.1
-    );
-  })
-  .flatMap((value) => value.owners);
-
-const ownersEatTooLittle = dogs
-  .filter((dog) => {
-    return !(
-      dog.curFood > dog.recommendedFood * 0.9 &&
-      dog.curFood < dog.recommendedFood * 1.1
-    );
-  })
-  .flatMap((value) => value.owners);
-
-const { ownersEatTooMuch1, ownersEatTooLittle1 } = dogs.reduce(
-  (acc, dog) => {
-    if (
-      dog.curFood > dog.recommendedFood * 0.9 &&
-      dog.curFood < dog.recommendedFood * 1.1
-    ) {
-      acc.ownersEatTooMuch1.push(dog.owners);
-    } else {
-      acc.ownersEatTooLittle1.push(dog.owners);
-    }
-    return acc;
-  },
-  {
-    ownersEatTooMuch1: [],
-    ownersEatTooLittle1: [],
-  }
-);
-
-console.log(ownersEatTooMuch.join(" "));
-console.log(ownersEatTooLittle.join(" "));
